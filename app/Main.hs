@@ -27,8 +27,8 @@ main = do
     wallets <- generateRandomWallets 1000 stockData
     
     -- Print the first wallet as an example
-    putStrLn "\nExample of generated wallet:"
-    printWallet (head wallets) sortedTickers
+    --putStrLn "\nExample of generated wallet:"
+    -- (head wallets) sortedTickers
     
     putStrLn $ "\nSuccessfully generated " ++ show (length wallets) ++ " random wallets."
     putStrLn "Done."
