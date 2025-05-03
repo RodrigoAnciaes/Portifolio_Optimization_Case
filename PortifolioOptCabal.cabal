@@ -47,7 +47,8 @@ library
     -- Import common warning flags.
     import:           warnings
     -- Modules exported by the library.
-    exposed-modules:  DataLoader
+    exposed-modules:  DataLoader,
+                      Simulate
     -- Modules included in this library but not exported.
     -- other-modules:
     -- LANGUAGE extensions used by modules in this package.
@@ -56,7 +57,9 @@ library
     build-depends:    base ^>=4.17.2.1,
                       time,
                       directory,
-                      split
+                      split,
+                      vector,
+                      random
     -- Directories containing source files.
     hs-source-dirs:   src
     -- Base language which the package is written in.
