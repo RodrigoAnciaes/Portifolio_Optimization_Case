@@ -1,6 +1,7 @@
 module Simulate
     ( Wallet
     , generateRandomWallets
+    , generateRandomWalletsParallel
     , printWallet
     ) where
 
@@ -8,6 +9,8 @@ import System.Random
 import Data.List (nub, sortOn)
 import Control.Monad (replicateM)
 import qualified Data.Vector as V
+import Control.Parallel.Strategies
+import Control.Concurrent (getNumCapabilities)
 import DataLoader (StockData(..))
 
 -- Type definition for a wallet - a vector of 30 weights
@@ -60,7 +63,7 @@ selectRandomTickers gen allTickers =
                then selectKFromN k n gen' acc
                else selectKFromN (k-1) n gen' (r:acc)
 
--- Generate n random wallets
+-- Non-parallel version of wallet generation (kept for reference)
 generateRandomWallets :: Int -> [StockData] -> IO [Wallet]
 generateRandomWallets n stockData = do
     gen <- getStdGen
@@ -78,6 +81,42 @@ generateRandomWallets n stockData = do
                          in (wallet:wallets, g'))
                          ([], gen') 
                          [1..n]
+
+-- Parallel version to generate n random wallets using multiple cores
+generateRandomWalletsParallel :: Int -> [StockData] -> IO [Wallet]
+generateRandomWalletsParallel n stockData = do
+    -- Get number of cores available
+    numCores <- getNumCapabilities
+    putStrLn $ "Using " ++ show numCores ++ " CPU cores for parallel processing"
+    
+    -- Create a different random generator seed for each chunk
+    seeds <- replicateM numCores (randomIO :: IO Int)
+    
+    -- Extract unique tickers from stock data and sort them
+    let allTickers = nub $ map ticker stockData
+        sortedTickers = sortOn id allTickers
+    
+    -- Calculate chunk size and prepare chunks
+    let chunkSize = n `div` numCores
+        remainder = n `mod` numCores
+        chunkSizes = replicate remainder (chunkSize + 1) ++ replicate (numCores - remainder) chunkSize
+        validChunks = filter (> 0) chunkSizes
+    
+    -- Generate wallets in parallel chunks
+    let generateChunk seed size = 
+            let gen = mkStdGen seed
+                (selectedIndices, gen') = selectRandomTickers gen sortedTickers
+                (wallets, _) = 
+                    foldl (\(acc, g) _ -> 
+                        let (wallet, g') = generateRandomWallet g (sortedTickers, selectedIndices)
+                        in (wallet:acc, g'))
+                        ([], gen') 
+                        [1..size]
+            in wallets
+    
+    -- Execute in parallel using strategies
+    return $ concat $ (`using` parList rseq) $
+        zipWith generateChunk seeds validChunks
 
 -- Pretty print a wallet with ticker names
 printWallet :: Wallet -> [String] -> IO ()

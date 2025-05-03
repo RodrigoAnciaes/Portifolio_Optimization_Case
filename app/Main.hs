@@ -1,8 +1,9 @@
 module Main where
 
 import DataLoader (StockData(..), loadStockData)
-import Simulate (Wallet, generateRandomWallets, printWallet)
+import Simulate (Wallet, generateRandomWalletsParallel, printWallet)
 import Data.List (nub, sortOn)
+import Data.Time (getCurrentTime, diffUTCTime)
 
 main :: IO ()
 main = do
@@ -22,9 +23,14 @@ main = do
     putStrLn $ "Found " ++ show (length tickers) ++ " unique tickers."
     putStrLn $ "Tickers: " ++ show sortedTickers
     
-    -- Generate 1000 random wallets
-    putStrLn "\nGenerating 1000 random wallets..."
-    wallets <- generateRandomWallets 1000 stockData
+    -- Generate 1000 random wallets using parallel processing
+    putStrLn "\nGenerating 1000 random wallets using parallel processing..."
+    startTime <- getCurrentTime
+    wallets <- generateRandomWalletsParallel 1000 stockData
+    endTime <- getCurrentTime
+    
+    let duration = diffUTCTime endTime startTime
+    putStrLn $ "Generation completed in " ++ show duration
     
     -- Print the first wallet as an example
     putStrLn "\nExample of generated wallet:"

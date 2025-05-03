@@ -59,7 +59,8 @@ library
                       directory,
                       split,
                       vector,
-                      random
+                      random,
+                      parallel
     -- Directories containing source files.
     hs-source-dirs:   src
     -- Base language which the package is written in.
@@ -77,7 +78,8 @@ executable PortifolioOptCabal
     -- Other library packages from which modules are imported.
     build-depends:    base ^>=4.17.2.1,
                       PortifolioOptCabal,
-                      time
+                      time,
+                      vector
     -- Directories containing source files.
     hs-source-dirs:   app
     -- Base language which the package is written in.
