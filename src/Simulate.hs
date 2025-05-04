@@ -6,7 +6,7 @@ module Simulate
     ) where
 
 import System.Random
-import Data.List (nub, sortOn, groupBy)
+import Data.List (nub, sortOn, groupBy, elemIndex)
 import Data.Function (on)
 import Control.Monad (replicateM)
 import Control.Parallel.Strategies
@@ -134,7 +134,7 @@ calculateDailyReturns stockData =
 calculateWalletDailyReturns :: M.Map (Day, String) Double -> [String] -> [Wallet] -> M.Map Day [Double]
 calculateWalletDailyReturns dailyReturns tickers wallets =
     let -- Get all unique dates
-        dates = nub $ map (fst . fst) $ M.keys dailyReturns
+        dates = nub $ map fst $ map fst $ M.toList dailyReturns
         
         -- For each date, calculate return for each wallet, in parallel
         dateReturnsMap = M.fromList $ map (\d -> 
@@ -166,7 +166,11 @@ calculateWalletReturns stockData wallets = do
     
     -- Calculate annual return for each wallet (mean daily return * 252)
     let annualReturns = map (\wallet -> 
-            let walletDailyReturnsList = concat $ M.elems walletDailyReturns
+            let dailyReturnsByDate = M.elems walletDailyReturns
+                walletDailyReturnsList = concat 
+                    [filter (not . isNaN) $ map (!! idx) dailyReturnsByDate | 
+                     idx <- [0..length wallets - 1], 
+                     idx == walletIdx wallet wallets]
                 meanDailyReturn = if null walletDailyReturnsList 
                                   then 0
                                   else sum walletDailyReturnsList / fromIntegral (length walletDailyReturnsList)
@@ -175,6 +179,13 @@ calculateWalletReturns stockData wallets = do
     
     -- Using parallelization to compute annual returns
     return $ parMap rdeepseq id annualReturns
+    where
+        -- Helper to find index of a wallet in the list
+        walletIdx :: Wallet -> [Wallet] -> Int
+        walletIdx wallet wallets = 
+            case elemIndex wallet wallets of
+                Just idx -> idx
+                Nothing -> -1
 
 -- Pretty print a wallet with just 3 example stocks and annual return
 printWallet :: Wallet -> [String] -> Maybe Double -> IO ()
