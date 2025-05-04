@@ -2,12 +2,18 @@ module Simulate
     ( Wallet
     , generateRandomWallets
     , printWallet
+    , calculateWalletReturns
     ) where
 
 import System.Random
-import Data.List (nub, sortOn)
+import Data.List (nub, sortOn, groupBy)
+import Data.Function (on)
 import Control.Monad (replicateM)
+import Control.Parallel.Strategies
+import Control.DeepSeq (NFData, rnf)
 import qualified Data.Vector as V
+import qualified Data.Map as M
+import Data.Time (Day)
 import DataLoader (StockData(..))
 
 -- Type definition for a wallet - a vector of 30 weights
@@ -102,9 +108,81 @@ generateRandomWallets n stockData = do
                          ([], gen')
                          [1..n]
 
--- Pretty print a wallet with just 3 example stocks
-printWallet :: Wallet -> [String] -> IO ()
-printWallet wallet tickers = do
+-- For NFData instance to use with parallelization
+instance NFData a => NFData (V.Vector a) where
+    rnf v = V.foldl' (\_ x -> rnf x) () v
+
+-- Calculate daily returns from stock data
+calculateDailyReturns :: [StockData] -> M.Map (Day, String) Double
+calculateDailyReturns stockData =
+    -- Group by ticker
+    let groupedByTicker = groupBy ((==) `on` ticker) $ sortOn ticker stockData
+        -- Calculate daily returns for each ticker series
+        tickerReturns = map calcTickerReturns groupedByTicker
+        -- Flatten and convert to Map
+        allReturns = concat tickerReturns
+    in M.fromList allReturns
+    where
+        calcTickerReturns :: [StockData] -> [((Day, String), Double)]
+        calcTickerReturns [] = []
+        calcTickerReturns [_] = []
+        calcTickerReturns stocks@(first:_) =
+            let sortedByDate = sortOn date stocks
+                -- Calculate percent changes between consecutive days
+                pairwise = zip sortedByDate (tail sortedByDate)
+                returns = map (\(prev, curr) -> 
+                        ((date curr, ticker curr), (close curr - close prev) / close prev)) pairwise
+            in returns
+
+-- Calculate wallet daily returns using parallelization
+calculateWalletDailyReturns :: M.Map (Day, String) Double -> [String] -> [Wallet] -> M.Map Day [Double]
+calculateWalletDailyReturns dailyReturns tickers wallets =
+    let -- Get all unique dates
+        dates = nub $ map (fst . fst) $ M.keys dailyReturns
+        
+        -- For each date, calculate return for each wallet, in parallel
+        dateReturnsMap = M.fromList $ map (\d -> 
+            (d, parMap rdeepseq (calculateWalletReturnForDate d dailyReturns tickers) wallets)) dates
+    in dateReturnsMap
+    where
+        calculateWalletReturnForDate :: Day -> M.Map (Day, String) Double -> [String] -> Wallet -> Double
+        calculateWalletReturnForDate day returnMap tickers wallet =
+            -- Multiply each stock's weight by its return for the day, and sum
+            V.sum $ V.imap (\i weight -> 
+                let ticker = tickers !! i
+                    stockReturn = M.lookup (day, ticker) returnMap
+                in case stockReturn of
+                    Just ret -> weight * ret
+                    Nothing -> 0) wallet
+
+-- Calculate annual returns for all wallets
+calculateWalletReturns :: [StockData] -> [Wallet] -> IO [(Wallet, Double)]
+calculateWalletReturns stockData wallets = do
+    -- Extract unique tickers in order
+    let allTickers = nub $ map ticker stockData
+        sortedTickers = sortOn id allTickers
+    
+    -- Calculate daily returns for all stocks
+    let dailyReturns = calculateDailyReturns stockData
+    
+    -- Calculate daily returns for each wallet
+    let walletDailyReturns = calculateWalletDailyReturns dailyReturns sortedTickers wallets
+    
+    -- Calculate annual return for each wallet (mean daily return * 252)
+    let annualReturns = map (\wallet -> 
+            let walletDailyReturnsList = concat $ M.elems walletDailyReturns
+                meanDailyReturn = if null walletDailyReturnsList 
+                                  then 0
+                                  else sum walletDailyReturnsList / fromIntegral (length walletDailyReturnsList)
+                annualReturn = meanDailyReturn * 252
+            in (wallet, annualReturn)) wallets
+    
+    -- Using parallelization to compute annual returns
+    return $ parMap rdeepseq id annualReturns
+
+-- Pretty print a wallet with just 3 example stocks and annual return
+printWallet :: Wallet -> [String] -> Maybe Double -> IO ()
+printWallet wallet tickers mbReturn = do
     putStrLn "Wallet allocation (3 examples):"
     
     -- Get the top 3 holdings by weight
@@ -119,9 +197,19 @@ printWallet wallet tickers = do
     let nonZeroCount = length $ filter (> 0) $ V.toList wallet
     putStrLn $ "Total allocation: " ++ showPercentage (V.sum wallet)
     putStrLn $ "Number of stocks: " ++ show nonZeroCount
+    
+    -- Print annual return if available
+    case mbReturn of
+        Just ret -> putStrLn $ "Annual return: " ++ showPercentage ret
+        Nothing -> return ()
+    
     where
         showPercentage :: Double -> String
         showPercentage value = show (value * 100) ++ "%"
+
+-- Print a wallet with its return
+printWalletWithReturn :: (Wallet, Double) -> [String] -> IO ()
+printWalletWithReturn (wallet, ret) tickers = printWallet wallet tickers (Just ret)
 
 -- Helper for when keyword
 when :: Bool -> IO () -> IO ()
