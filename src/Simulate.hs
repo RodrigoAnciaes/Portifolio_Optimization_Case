@@ -2,6 +2,7 @@ module Simulate
     ( Wallet
     , generateRandomWallets
     , printWallet
+    , printWalletWithReturn
     , calculateWalletReturns
     ) where
 
