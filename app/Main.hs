@@ -28,7 +28,7 @@ main = do
     
     -- Print the first wallet as an example
     --putStrLn "\nExample of generated wallet:"
-    -- (head wallets) sortedTickers
+    --printWallet (head wallets) sortedTickers
     
     putStrLn $ "\nSuccessfully generated " ++ show (length wallets) ++ " random wallets."
     putStrLn "Done."

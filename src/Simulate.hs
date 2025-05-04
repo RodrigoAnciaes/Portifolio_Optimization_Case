@@ -102,14 +102,23 @@ generateRandomWallets n stockData = do
                          ([], gen')
                          [1..n]
 
--- Pretty print a wallet with ticker names
+-- Pretty print a wallet with just 3 example stocks
 printWallet :: Wallet -> [String] -> IO ()
 printWallet wallet tickers = do
-    putStrLn "Wallet allocation:"
-    V.imapM_ (\idx weight ->
-        when (weight > 0) $
-            putStrLn $ "  " ++ tickers !! idx ++ ": " ++ showPercentage weight) wallet
-    putStrLn $ "Total: " ++ showPercentage (V.sum wallet)
+    putStrLn "Wallet allocation (3 examples):"
+    
+    -- Get the top 3 holdings by weight
+    let nonZeroWeights = [(idx, w) | idx <- [0..V.length wallet - 1], let w = wallet V.! idx, w > 0]
+        sortedWeights = take 3 $ sortOn (negate . snd) nonZeroWeights
+    
+    -- Print the 3 examples
+    mapM_ (\(idx, weight) ->
+        putStrLn $ "  " ++ tickers !! idx ++ ": " ++ showPercentage weight) sortedWeights
+    
+    -- Print total and count of stocks
+    let nonZeroCount = length $ filter (> 0) $ V.toList wallet
+    putStrLn $ "Total allocation: " ++ showPercentage (V.sum wallet)
+    putStrLn $ "Number of stocks: " ++ show nonZeroCount
     where
         showPercentage :: Double -> String
         showPercentage value = show (value * 100) ++ "%"
