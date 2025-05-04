@@ -108,10 +108,6 @@ generateRandomWallets n stockData = do
                          ([], gen')
                          [1..n]
 
--- For NFData instance to use with parallelization
-instance NFData a => NFData (V.Vector a) where
-    rnf v = V.foldl' (\_ x -> rnf x) () v
-
 -- Calculate daily returns from stock data
 calculateDailyReturns :: [StockData] -> M.Map (Day, String) Double
 calculateDailyReturns stockData =
