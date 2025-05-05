@@ -1,7 +1,9 @@
 module Main where
 
 import DataLoader (StockData(..), loadStockData)
-import Simulate (Wallet, generateRandomWallets, printWallet, printWalletWithReturn, calculateWalletReturns)
+import Simulate (Wallet, generateRandomWallets, printWallet, 
+                printWalletWithReturn, printWalletWithReturnAndVolatility, 
+                calculateWalletReturnsAndVolatilities)
 import Data.List (nub, sortOn)
 import Data.Ord (comparing)
 import Control.Monad (forM_)
@@ -33,29 +35,46 @@ main = do
     let exampleWallet = head wallets
     putStrLn $ "Wallet allocation: " ++ show exampleWallet
     
-    -- Calculate annual returns for all wallets
-    putStrLn "\nCalculating annual returns using parallel processing..."
-    walletReturns <- calculateWalletReturns stockData wallets
+    -- Calculate annual returns and volatilities for all wallets
+    putStrLn "\nCalculating annual returns and volatilities using parallel processing..."
+    walletMetrics <- calculateWalletReturnsAndVolatilities stockData wallets
     
     -- Sort wallets by return (highest first)
-    let sortedWalletReturns = sortOn (negate . snd) walletReturns
+    let sortedByReturn = sortOn (\(_, ret, _) -> negate ret) walletMetrics
     
-    -- Print top 5 performing wallets
-    putStrLn "\nTop 5 performing wallets:"
-    forM_ (take 5 sortedWalletReturns) $ \walletReturn -> do
-        printWalletWithReturn walletReturn sortedTickers
+    -- Print top 5 performing wallets by return
+    putStrLn "\nTop 5 performing wallets by return:"
+    forM_ (take 5 sortedByReturn) $ \walletMetric -> do
+        printWalletWithReturnAndVolatility walletMetric sortedTickers
         putStrLn ""
     
-    -- Print bottom 5 performing wallets
-    -- putStrLn "\nBottom 5 performing wallets:"
-    -- forM_ (take 5 $ reverse sortedWalletReturns) $ \walletReturn -> do
-    --     printWalletWithReturn walletReturn sortedTickers
-    --     putStrLn ""
+    -- Sort wallets by Sharpe ratio (highest first)
+    let riskFreeRate = 0.02 -- Assuming 2% risk-free rate
+        sortedBySharpe = sortOn (\(_, ret, vol) -> negate $ (ret - riskFreeRate) / vol) walletMetrics
     
-    -- Print average return across all wallets
-    -- putStrLn "\nCalculating average annual return across all wallets..."
-    -- let avgReturn = sum (map snd walletReturns) / fromIntegral (length walletReturns)
-    -- putStrLn $ "Average annual return across all wallets: " ++ show (avgReturn * 100) ++ "%"
+    -- Print top 5 wallets by Sharpe ratio
+    putStrLn "\nTop 5 performing wallets by Sharpe ratio:"
+    forM_ (take 5 sortedBySharpe) $ \walletMetric -> do
+        printWalletWithReturnAndVolatility walletMetric sortedTickers
+        putStrLn ""
+    
+    -- Print wallets with lowest volatility (for risk-averse investors)
+    let sortedByVolatility = sortOn (\(_, _, vol) -> vol) walletMetrics
+    
+    putStrLn "\nTop 5 wallets with lowest volatility:"
+    forM_ (take 5 sortedByVolatility) $ \walletMetric -> do
+        printWalletWithReturnAndVolatility walletMetric sortedTickers
+        putStrLn ""
+    
+    -- Print average metrics across all wallets
+    putStrLn "\nCalculating average metrics across all wallets..."
+    let avgReturn = sum (map (\(_, ret, _) -> ret) walletMetrics) / fromIntegral (length walletMetrics)
+        avgVolatility = sum (map (\(_, _, vol) -> vol) walletMetrics) / fromIntegral (length walletMetrics)
+        avgSharpe = sum (map (\(_, ret, vol) -> (ret - riskFreeRate) / vol) walletMetrics) / fromIntegral (length walletMetrics)
+    
+    putStrLn $ "Average annual return: " ++ show (avgReturn * 100) ++ "%"
+    putStrLn $ "Average annual volatility: " ++ show (avgVolatility * 100) ++ "%"
+    putStrLn $ "Average Sharpe ratio: " ++ show avgSharpe
     
     putStrLn $ "\nSuccessfully analyzed " ++ show (length wallets) ++ " random wallets."
     putStrLn "Done."

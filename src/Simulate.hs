@@ -4,6 +4,9 @@ module Simulate
     , printWallet
     , printWalletWithReturn
     , calculateWalletReturns
+    , calculateWalletVolatility
+    , printWalletWithReturnAndVolatility
+    , calculateWalletReturnsAndVolatilities
     ) where
 
 import System.Random
@@ -190,6 +193,83 @@ calculateWalletReturns stockData wallets = do
                 Just idx -> idx
                 Nothing -> -1
 
+-- NEW: Calculate the covariance matrix for stock returns
+calculateCovarianceMatrix :: [StockData] -> [String] -> IO (V.Vector (V.Vector Double))
+calculateCovarianceMatrix stockData sortedTickers = do
+    -- Calculate daily returns for all stocks
+    let dailyReturns = calculateDailyReturns stockData
+    
+    -- Get all unique dates in chronological order
+    let allDates = nub $ map (fst . fst) $ M.toList dailyReturns
+        sortedDates = sortOn id allDates
+    
+    -- Create a map of ticker -> list of returns ordered by date
+    let tickerReturnsMap = M.fromList $ map (\ticker -> 
+            let tickerDailyReturns = map (\date -> 
+                    M.findWithDefault 0.0 (date, ticker) dailyReturns) sortedDates
+            in (ticker, tickerDailyReturns)) sortedTickers
+    
+    -- Calculate means for each ticker
+    let tickerMeans = M.map (\returns -> 
+            if null returns then 0 else sum returns / fromIntegral (length returns)) tickerReturnsMap
+    
+    -- Calculate covariance matrix
+    let n = length sortedTickers
+        covMatrix = V.generate n $ \i -> 
+            let ticker1 = sortedTickers !! i
+                returns1 = tickerReturnsMap M.! ticker1
+                mean1 = tickerMeans M.! ticker1
+            in V.generate n $ \j -> 
+                let ticker2 = sortedTickers !! j
+                    returns2 = tickerReturnsMap M.! ticker2
+                    mean2 = tickerMeans M.! ticker2
+                    -- Create pairs of corresponding daily returns
+                    returnPairs = zip returns1 returns2
+                    -- Calculate the covariance
+                    covSum = sum $ map (\(r1, r2) -> (r1 - mean1) * (r2 - mean2)) returnPairs
+                    -- Divide by n-1 for sample covariance
+                    cov = if null returnPairs || length returnPairs <= 1
+                          then 0
+                          else covSum / fromIntegral (length returnPairs - 1)
+                in cov
+    
+    return covMatrix
+
+-- NEW: Calculate volatility for a wallet
+calculateWalletVolatility :: Wallet -> V.Vector (V.Vector Double) -> Double
+calculateWalletVolatility wallet covMatrix =
+    let n = V.length wallet
+        -- Compute w_t * e * w
+        innerProducts = V.generate n $ \i ->
+            let weight_i = wallet V.! i
+                covRow = covMatrix V.! i
+            in weight_i * V.sum (V.imap (\j weight_j -> weight_j * (covRow V.! j)) wallet)
+        variance = V.sum innerProducts
+        -- Volatility = sqrt(252) * sqrt(variance)
+        annualizedVolatility = sqrt(252) * sqrt(variance)
+    in annualizedVolatility
+
+-- NEW: Calculate returns and volatilities for all wallets
+calculateWalletReturnsAndVolatilities :: [StockData] -> [Wallet] -> IO [(Wallet, Double, Double)]
+calculateWalletReturnsAndVolatilities stockData wallets = do
+    -- Extract unique tickers in order
+    let allTickers = nub $ map ticker stockData
+        sortedTickers = sortOn id allTickers
+    
+    -- Calculate returns for all wallets
+    walletReturns <- calculateWalletReturns stockData wallets
+    
+    -- Calculate covariance matrix
+    covMatrix <- calculateCovarianceMatrix stockData sortedTickers
+    
+    -- Calculate volatilities for all wallets
+    let walletVolatilities = map (\(wallet, ret) -> 
+            let vol = calculateWalletVolatility wallet covMatrix
+            in (wallet, ret, vol)) walletReturns
+    
+    -- Using parallelization to compute results
+    return $ parMap rdeepseq id walletVolatilities
+
 -- Pretty print a wallet with just 3 example stocks and annual return
 printWallet :: Wallet -> [String] -> Maybe Double -> IO ()
 printWallet wallet tickers mbReturn = do
@@ -220,6 +300,24 @@ printWallet wallet tickers mbReturn = do
 -- Print a wallet with its return
 printWalletWithReturn :: (Wallet, Double) -> [String] -> IO ()
 printWalletWithReturn (wallet, ret) tickers = printWallet wallet tickers (Just ret)
+
+-- NEW: Print a wallet with its return and volatility
+printWalletWithReturnAndVolatility :: (Wallet, Double, Double) -> [String] -> IO ()
+printWalletWithReturnAndVolatility (wallet, ret, vol) tickers = do
+    -- Print basic wallet info and return
+    printWallet wallet tickers (Just ret)
+    
+    -- Print volatility
+    putStrLn $ "Annual volatility: " ++ showPercentage vol
+    
+    -- Print Sharpe ratio (assuming risk-free rate of 0.02)
+    let riskFreeRate = 0.02
+        sharpeRatio = (ret - riskFreeRate) / vol
+    putStrLn $ "Sharpe ratio: " ++ show sharpeRatio
+    
+    where
+        showPercentage :: Double -> String
+        showPercentage value = show (value * 100) ++ "%"
 
 -- Helper for when keyword
 when :: Bool -> IO () -> IO ()
