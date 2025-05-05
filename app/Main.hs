@@ -11,7 +11,7 @@ main = do
     putStrLn "Loading stock data..."
    
     -- Load the stock data from CSV file
-    let dataPath = "data/stocks.csv"
+    let dataPath = "data/dow_jones_all_tickers_2024.csv"
     stockData <- loadStockData dataPath
    
     -- Print the number of records loaded
@@ -25,22 +25,26 @@ main = do
     putStrLn $ "Tickers: " ++ show sortedTickers
    
     -- Generate random wallets
-    let numWallets = 10000  -- Reduced number for faster testing
+    let numWallets = 1000  -- Reduced number for faster testing
     putStrLn $ "\nGenerating " ++ show numWallets ++ " random wallets..."
     wallets <- generateRandomWallets numWallets stockData
+
+    putStrLn "\nExample wallet:"
+    let exampleWallet = head wallets
+    putStrLn $ "Wallet allocation: " ++ show exampleWallet
     
     -- Calculate annual returns for all wallets
     putStrLn "\nCalculating annual returns using parallel processing..."
     walletReturns <- calculateWalletReturns stockData wallets
     
     -- Sort wallets by return (highest first)
-    --let sortedWalletReturns = sortOn (negate . snd) walletReturns
+    let sortedWalletReturns = sortOn (negate . snd) walletReturns
     
     -- Print top 5 performing wallets
-    -- putStrLn "\nTop 5 performing wallets:"
-    -- forM_ (take 5 sortedWalletReturns) $ \walletReturn -> do
-    --     printWalletWithReturn walletReturn sortedTickers
-    --     putStrLn ""
+    putStrLn "\nTop 5 performing wallets:"
+    forM_ (take 5 sortedWalletReturns) $ \walletReturn -> do
+        printWalletWithReturn walletReturn sortedTickers
+        putStrLn ""
     
     -- Print bottom 5 performing wallets
     -- putStrLn "\nBottom 5 performing wallets:"

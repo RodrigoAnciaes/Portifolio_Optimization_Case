@@ -7,7 +7,7 @@ module Simulate
     ) where
 
 import System.Random
-import Data.List (nub, sortOn, groupBy, elemIndex)
+import Data.List (nub, sortOn, groupBy, elemIndex, unfoldr)
 import Data.Function (on)
 import Control.Monad (replicateM)
 import Control.Parallel.Strategies
@@ -90,7 +90,7 @@ selectRandomTickers gen allTickers =
                then selectKFromN k n gen' acc
                else selectKFromN (k-1) n gen' (r:acc)
 
--- Generate n random wallets
+-- Generate n random wallets using parallelization
 generateRandomWallets :: Int -> [StockData] -> IO [Wallet]
 generateRandomWallets n stockData = do
     gen <- getStdGen
@@ -102,12 +102,14 @@ generateRandomWallets n stockData = do
     -- Generate a list of indices to use for each wallet
     let (selectedIndices, gen') = selectRandomTickers gen sortedTickers
    
-    -- Generate n random wallets
-    return $ fst $ foldr (\_ (wallets, g) ->
-                         let (wallet, g') = generateRandomWallet g (sortedTickers, selectedIndices)
-                         in (wallet:wallets, g'))
-                         ([], gen')
-                         [1..n]
+    -- Generate seeds for parallel wallet generation
+    let seeds = take n $ unfoldr (Just . split) gen'
+        
+    -- Generate wallets in parallel using the seeds
+    let wallets = withStrategy (parBuffer 100 rdeepseq) $ 
+                  map (\g -> fst $ generateRandomWallet g (sortedTickers, selectedIndices)) seeds
+    
+    return wallets
 
 -- Calculate daily returns from stock data
 calculateDailyReturns :: [StockData] -> M.Map (Day, String) Double
