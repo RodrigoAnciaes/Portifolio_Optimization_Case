@@ -142,7 +142,7 @@ main = do
     putStrLn $ "Total number of combinations: " ++ show totalCombinations
     
     -- Set number of wallets per combination
-    let walletsPerCombination = 10
+    let walletsPerCombination = 1000
     
     -- Calculate covariance matrix once (memory intensive but necessary)
     putStrLn "Calculating covariance matrix (this might take a while)..."
