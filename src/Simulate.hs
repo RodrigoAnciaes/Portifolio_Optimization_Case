@@ -15,7 +15,9 @@ import Data.List (nub, sortOn, groupBy, elemIndex, unfoldr)
 import Data.Function (on)
 import Control.Monad (replicateM)
 import Control.Parallel.Strategies
-import Control.DeepSeq (NFData, rnf)
+import Control.DeepSeq (NFData, rnf, force)
+import Control.Parallel (par, pseq)
+import Control.Concurrent (getNumCapabilities)
 import qualified Data.Vector as V
 import qualified Data.Map as M
 import Data.Time (Day)
@@ -194,7 +196,7 @@ calculateWalletReturns stockData wallets = do
                 Just idx -> idx
                 Nothing -> -1
 
--- NEW: Calculate the covariance matrix for stock returns
+-- NEW: Calculate the covariance matrix for stock returns with improved parallelization
 calculateCovarianceMatrix :: [StockData] -> [String] -> IO (V.Vector (V.Vector Double))
 calculateCovarianceMatrix stockData sortedTickers = do
     -- Calculate daily returns for all stocks
@@ -214,29 +216,45 @@ calculateCovarianceMatrix stockData sortedTickers = do
     let tickerMeans = M.map (\returns -> 
             if null returns then 0 else sum returns / fromIntegral (length returns)) tickerReturnsMap
     
-    -- Calculate covariance matrix
+    -- Number of tickers
     let n = length sortedTickers
-        covMatrix = V.generate n $ \i -> 
-            let ticker1 = sortedTickers !! i
-                returns1 = tickerReturnsMap M.! ticker1
-                mean1 = tickerMeans M.! ticker1
-            in V.generate n $ \j -> 
-                let ticker2 = sortedTickers !! j
-                    returns2 = tickerReturnsMap M.! ticker2
-                    mean2 = tickerMeans M.! ticker2
+    
+    -- Prepare data for covariance calculation
+    let rowData = [(i, sortedTickers !! i, tickerReturnsMap M.! (sortedTickers !! i), 
+                   tickerMeans M.! (sortedTickers !! i)) | i <- [0..(n-1)]]
+    
+    -- Calculate covariance matrix rows in parallel
+    -- Use parBuffer for controlled parallelism
+    -- Get number of CPU cores to optimize chunk size
+    numCores <- getNumCapabilities
+    let chunkSize = max 1 (n `div` (numCores * 2))
+        
+        -- Function to calculate a single row of the covariance matrix
+        calcRow (rowIdx, rowTicker, rowReturns, rowMean) = 
+            V.generate n $ \colIdx ->
+                let colTicker = sortedTickers !! colIdx
+                    colReturns = tickerReturnsMap M.! colTicker
+                    colMean = tickerMeans M.! colTicker
+                    
                     -- Create pairs of corresponding daily returns
-                    returnPairs = zip returns1 returns2
+                    returnPairs = zip rowReturns colReturns
+                    
                     -- Calculate the covariance
-                    covSum = sum $ map (\(r1, r2) -> (r1 - mean1) * (r2 - mean2)) returnPairs
+                    covSum = sum $ map (\(r1, r2) -> (r1 - rowMean) * (r2 - colMean)) returnPairs
+                    
                     -- Divide by n-1 for sample covariance
                     cov = if null returnPairs || length returnPairs <= 1
                           then 0
                           else covSum / fromIntegral (length returnPairs - 1)
                 in cov
+        
+        -- Calculate rows in parallel using parBuffer strategy
+        covRows = withStrategy (parBuffer chunkSize rdeepseq) $ map calcRow rowData
     
-    return covMatrix
+    -- Construct the covariance matrix
+    return $ V.fromList covRows
 
--- NEW: Calculate volatility for a wallet
+-- Calculate volatility for a wallet
 calculateWalletVolatility :: Wallet -> V.Vector (V.Vector Double) -> Double
 calculateWalletVolatility wallet covMatrix =
     let n = V.length wallet
@@ -250,7 +268,12 @@ calculateWalletVolatility wallet covMatrix =
         annualizedVolatility = sqrt(252) * sqrt(variance)
     in annualizedVolatility
 
--- NEW: Calculate returns and volatilities for all wallets
+-- Calculate Sharpe ratio for a given return and volatility
+calculateSharpeRatio :: Double -> Double -> Double -> Double
+calculateSharpeRatio riskFreeRate ret vol = 
+    if vol > 0 then (ret - riskFreeRate) / vol else 0
+
+-- Calculate returns and volatilities for all wallets
 calculateWalletReturnsAndVolatilities :: [StockData] -> [Wallet] -> IO [(Wallet, Double, Double)]
 calculateWalletReturnsAndVolatilities stockData wallets = do
     -- Extract unique tickers in order
@@ -260,26 +283,28 @@ calculateWalletReturnsAndVolatilities stockData wallets = do
     -- Calculate returns for all wallets
     walletReturns <- calculateWalletReturns stockData wallets
     
+    putStrLn "Calculating covariance matrix using parallel processing..."
     -- Calculate covariance matrix
     covMatrix <- calculateCovarianceMatrix stockData sortedTickers
     
-    -- Calculate volatilities for all wallets
-    let walletVolatilities = map (\(wallet, ret) -> 
+    putStrLn "Calculating volatilities for all wallets..."
+    -- Calculate volatilities for all wallets in parallel
+    let walletVolatilities = withStrategy (parBuffer 100 rdeepseq) $ map (\(wallet, ret) -> 
             let vol = calculateWalletVolatility wallet covMatrix
             in (wallet, ret, vol)) walletReturns
     
-    -- Using parallelization to compute results
-    return $ parMap rdeepseq id walletVolatilities
+    return walletVolatilities
 
 -- Pretty print a wallet with just 3 example stocks and annual return
 printWallet :: Wallet -> [String] -> Maybe Double -> IO ()
 printWallet wallet tickers mbReturn = do
-    putStrLn "Wallet allocation:"
+    putStrLn "Wallet allocation (3 examples):"
     
+    -- Get the top 3 holdings by weight
     let nonZeroWeights = [(idx, w) | idx <- [0..V.length wallet - 1], let w = wallet V.! idx, w > 0]
-        sortedWeights = sortOn (negate . snd) nonZeroWeights
+        sortedWeights = take 3 $ sortOn (negate . snd) nonZeroWeights
     
-
+    -- Print the 3 examples
     mapM_ (\(idx, weight) ->
         putStrLn $ "  " ++ tickers !! idx ++ ": " ++ showPercentage weight) sortedWeights
     
@@ -301,12 +326,7 @@ printWallet wallet tickers mbReturn = do
 printWalletWithReturn :: (Wallet, Double) -> [String] -> IO ()
 printWalletWithReturn (wallet, ret) tickers = printWallet wallet tickers (Just ret)
 
--- Calculate Sharpe ratio for a given return and volatility
-calculateSharpeRatio :: Double -> Double -> Double -> Double
-calculateSharpeRatio riskFreeRate ret vol = 
-    if vol > 0 then (ret - riskFreeRate) / vol else 0
-
--- NEW: Print a wallet with its return and volatility
+-- Print a wallet with its return and volatility
 printWalletWithReturnAndVolatility :: (Wallet, Double, Double) -> [String] -> Double -> IO ()
 printWalletWithReturnAndVolatility (wallet, ret, vol) tickers riskFreeRate = do
     -- Print basic wallet info and return
