@@ -5,6 +5,7 @@ module Simulate
     , printWalletWithReturn
     , calculateWalletReturns
     , calculateWalletVolatility
+    , calculateSharpeRatio
     , printWalletWithReturnAndVolatility
     , calculateWalletReturnsAndVolatilities
     ) where
@@ -273,13 +274,12 @@ calculateWalletReturnsAndVolatilities stockData wallets = do
 -- Pretty print a wallet with just 3 example stocks and annual return
 printWallet :: Wallet -> [String] -> Maybe Double -> IO ()
 printWallet wallet tickers mbReturn = do
-    putStrLn "Wallet allocation (3 examples):"
+    putStrLn "Wallet allocation:"
     
-    -- Get the top 3 holdings by weight
     let nonZeroWeights = [(idx, w) | idx <- [0..V.length wallet - 1], let w = wallet V.! idx, w > 0]
-        sortedWeights = take 3 $ sortOn (negate . snd) nonZeroWeights
+        sortedWeights = sortOn (negate . snd) nonZeroWeights
     
-    -- Print the 3 examples
+
     mapM_ (\(idx, weight) ->
         putStrLn $ "  " ++ tickers !! idx ++ ": " ++ showPercentage weight) sortedWeights
     
@@ -301,18 +301,22 @@ printWallet wallet tickers mbReturn = do
 printWalletWithReturn :: (Wallet, Double) -> [String] -> IO ()
 printWalletWithReturn (wallet, ret) tickers = printWallet wallet tickers (Just ret)
 
+-- Calculate Sharpe ratio for a given return and volatility
+calculateSharpeRatio :: Double -> Double -> Double -> Double
+calculateSharpeRatio riskFreeRate ret vol = 
+    if vol > 0 then (ret - riskFreeRate) / vol else 0
+
 -- NEW: Print a wallet with its return and volatility
-printWalletWithReturnAndVolatility :: (Wallet, Double, Double) -> [String] -> IO ()
-printWalletWithReturnAndVolatility (wallet, ret, vol) tickers = do
+printWalletWithReturnAndVolatility :: (Wallet, Double, Double) -> [String] -> Double -> IO ()
+printWalletWithReturnAndVolatility (wallet, ret, vol) tickers riskFreeRate = do
     -- Print basic wallet info and return
     printWallet wallet tickers (Just ret)
     
     -- Print volatility
     putStrLn $ "Annual volatility: " ++ showPercentage vol
     
-    -- Print Sharpe ratio (assuming risk-free rate of 0.02)
-    let riskFreeRate = 0.02
-        sharpeRatio = (ret - riskFreeRate) / vol
+    -- Print Sharpe ratio
+    let sharpeRatio = calculateSharpeRatio riskFreeRate ret vol
     putStrLn $ "Sharpe ratio: " ++ show sharpeRatio
     
     where

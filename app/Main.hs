@@ -3,8 +3,8 @@ module Main where
 import DataLoader (StockData(..), loadStockData)
 import Simulate (Wallet, generateRandomWallets, printWallet, 
                 printWalletWithReturn, printWalletWithReturnAndVolatility, 
-                calculateWalletReturnsAndVolatilities)
-import Data.List (nub, sortOn)
+                calculateWalletReturnsAndVolatilities, calculateSharpeRatio)
+import Data.List (nub, sortOn, maximumBy)
 import Data.Ord (comparing)
 import Control.Monad (forM_)
 
@@ -27,54 +27,45 @@ main = do
     putStrLn $ "Tickers: " ++ show sortedTickers
    
     -- Generate random wallets
-    let numWallets = 1000  -- Reduced number for faster testing
+    let numWallets = 5000  -- Reduced number for faster testing
     putStrLn $ "\nGenerating " ++ show numWallets ++ " random wallets..."
     wallets <- generateRandomWallets numWallets stockData
 
     putStrLn "\nExample wallet:"
     let exampleWallet = head wallets
-    putStrLn $ "Wallet allocation: " ++ show exampleWallet
+    printWallet exampleWallet sortedTickers Nothing
+    
+    -- Set risk-free rate
+    let riskFreeRate = 0.14 -- Assuming 14% risk-free rate
     
     -- Calculate annual returns and volatilities for all wallets
     putStrLn "\nCalculating annual returns and volatilities using parallel processing..."
     walletMetrics <- calculateWalletReturnsAndVolatilities stockData wallets
     
-    -- Sort wallets by return (highest first)
-    let sortedByReturn = sortOn (\(_, ret, _) -> negate ret) walletMetrics
+    -- Calculate Sharpe ratios for all wallets
+    let walletSharpes = map (\(wallet, ret, vol) -> 
+                               (wallet, ret, vol, calculateSharpeRatio riskFreeRate ret vol)) 
+                            walletMetrics
     
-    -- Print top 5 performing wallets by return
-    putStrLn "\nTop 5 performing wallets by return:"
-    forM_ (take 5 sortedByReturn) $ \walletMetric -> do
-        printWalletWithReturnAndVolatility walletMetric sortedTickers
-        putStrLn ""
+    -- Find the wallet with the best Sharpe ratio
+    let bestSharpeWallet = maximumBy (comparing (\(_, _, _, sharpe) -> sharpe)) walletSharpes
+        (bestWallet, bestReturn, bestVol, bestSharpe) = bestSharpeWallet
     
-    -- Sort wallets by Sharpe ratio (highest first)
-    let riskFreeRate = 0.02 -- Assuming 2% risk-free rate
-        sortedBySharpe = sortOn (\(_, ret, vol) -> negate $ (ret - riskFreeRate) / vol) walletMetrics
-    
-    -- Print top 5 wallets by Sharpe ratio
-    putStrLn "\nTop 5 performing wallets by Sharpe ratio:"
-    forM_ (take 5 sortedBySharpe) $ \walletMetric -> do
-        printWalletWithReturnAndVolatility walletMetric sortedTickers
-        putStrLn ""
-    
-    -- Print wallets with lowest volatility (for risk-averse investors)
-    let sortedByVolatility = sortOn (\(_, _, vol) -> vol) walletMetrics
-    
-    putStrLn "\nTop 5 wallets with lowest volatility:"
-    forM_ (take 5 sortedByVolatility) $ \walletMetric -> do
-        printWalletWithReturnAndVolatility walletMetric sortedTickers
-        putStrLn ""
     
     -- Print average metrics across all wallets
     putStrLn "\nCalculating average metrics across all wallets..."
-    let avgReturn = sum (map (\(_, ret, _) -> ret) walletMetrics) / fromIntegral (length walletMetrics)
-        avgVolatility = sum (map (\(_, _, vol) -> vol) walletMetrics) / fromIntegral (length walletMetrics)
-        avgSharpe = sum (map (\(_, ret, vol) -> (ret - riskFreeRate) / vol) walletMetrics) / fromIntegral (length walletMetrics)
+    let avgReturn = sum (map (\(_, ret, _, _) -> ret) walletSharpes) / fromIntegral (length walletSharpes)
+        avgVolatility = sum (map (\(_, _, vol, _) -> vol) walletSharpes) / fromIntegral (length walletSharpes)
+        avgSharpe = sum (map (\(_, _, _, sharpe) -> sharpe) walletSharpes) / fromIntegral (length walletSharpes)
     
     putStrLn $ "Average annual return: " ++ show (avgReturn * 100) ++ "%"
     putStrLn $ "Average annual volatility: " ++ show (avgVolatility * 100) ++ "%"
     putStrLn $ "Average Sharpe ratio: " ++ show avgSharpe
+    
+    -- Print the wallet with the best Sharpe ratio
+    putStrLn "\n=== OPTIMAL PORTFOLIO BY SHARPE RATIO ==="
+    putStrLn $ "Best Sharpe ratio: " ++ show bestSharpe
+    printWalletWithReturnAndVolatility (bestWallet, bestReturn, bestVol) sortedTickers riskFreeRate
     
     putStrLn $ "\nSuccessfully analyzed " ++ show (length wallets) ++ " random wallets."
     putStrLn "Done."
