@@ -82,7 +82,8 @@ executable PortifolioOptCabal
                       vector,
                       containers,
                       parallel,
-                      deepseq
+                      deepseq,
+                      random
     -- Directories containing source files.
     hs-source-dirs:   app
     -- Base language which the package is written in.

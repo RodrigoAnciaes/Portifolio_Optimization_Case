@@ -10,6 +10,7 @@ module Simulate
     , calculateSharpeRatio
     , printWalletWithReturnAndVolatility
     , calculateWalletReturnsAndVolatilities
+    , calculateCovarianceMatrix
     ) where
 
 import System.Random
