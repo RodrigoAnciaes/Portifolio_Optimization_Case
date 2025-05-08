@@ -1,6 +1,8 @@
 module Simulate
     ( Wallet
     , generateRandomWallets
+    , generateAllTickerCombinations
+    , generateWalletsByTickerCombination
     , printWallet
     , printWalletWithReturn
     , calculateWalletReturns
@@ -26,7 +28,10 @@ import DataLoader (StockData(..))
 -- Type definition for a wallet - a vector of 30 weights
 type Wallet = V.Vector Double
 
--- Generate a single random wallet with exactly 25 non-zero weights
+-- Type for a ticker combination - (indices, tickers)
+type TickerCombination = ([Int], [String])
+
+-- Generate a single random wallet with specified weights for selected tickers
 -- The sum of all weights will be 1.0
 -- No stock can have more than 20% allocation (0.2)
 generateRandomWallet :: RandomGen g => g -> ([String], [Int]) -> (Wallet, g)
@@ -78,7 +83,63 @@ generateRandomWallet gen (tickers, selectedIndices) =
                 adjustedCompliant = map (+ excessPerItem) compliant
             in replicate (length exceeders) maxAllowed ++ adjustedCompliant
 
--- Select 25 random tickers from the list of all tickers
+-- Helper function to generate combinations of k elements from a list
+combinations :: Int -> [a] -> [[a]]
+combinations 0 _ = [[]]
+combinations _ [] = []
+combinations k (x:xs)
+    | k > length (x:xs) = []
+    | otherwise = map (x:) (combinations (k-1) xs) ++ combinations k xs
+
+-- NEW: Generate all combinations of 25 tickers from the 30 available
+generateAllTickerCombinations :: [String] -> [TickerCombination]
+generateAllTickerCombinations tickers = 
+    let n = length tickers
+        -- Generate all combinations of 25 indices from 0 to n-1
+        allCombinations = combinations 25 [0..n-1]
+        -- For each combination, get the corresponding tickers
+        combinationsWithTickers = map (\indices -> 
+            let selectedTickers = map (tickers !!) indices
+            in (indices, selectedTickers)) allCombinations
+    in combinationsWithTickers
+
+-- NEW: Generate x random wallets for a specific ticker combination
+generateWalletsForCombination :: RandomGen g => Int -> g -> TickerCombination -> [Wallet]
+generateWalletsForCombination count gen (indices, selectedTickers) =
+    let allTickers = selectedTickers  -- Use the selected tickers directly
+        (wallets, _) = generateWallets count gen [] (allTickers, indices)
+    in wallets
+    where
+        generateWallets :: RandomGen g => Int -> g -> [Wallet] -> ([String], [Int]) -> ([Wallet], g)
+        generateWallets 0 g acc _ = (acc, g)
+        generateWallets n g acc tickerInfo =
+            let (wallet, g') = generateRandomWallet g tickerInfo
+            in generateWallets (n-1) g' (wallet:acc) tickerInfo
+
+-- NEW: Generate wallets for each ticker combination in parallel
+generateWalletsByTickerCombination :: Int -> [StockData] -> IO [(TickerCombination, [Wallet])]
+generateWalletsByTickerCombination walletsPerCombination stockData = do
+    gen <- getStdGen
+    
+    -- Extract unique tickers from stock data and sort them
+    let allTickers = nub $ map ticker stockData
+        sortedTickers = sortOn id allTickers
+    
+    -- Generate all combinations of 25 tickers
+    let tickerCombinations = generateAllTickerCombinations sortedTickers
+    
+    -- Generate seeds for parallel wallet generation
+    let seeds = take (length tickerCombinations) $ unfoldr (Just . split) gen
+    
+    -- Generate wallets for each combination in parallel
+    let combinationWallets = withStrategy (parBuffer 100 rdeepseq) $ 
+                            zipWith (\seed combo -> 
+                                (combo, generateWalletsForCombination walletsPerCombination seed combo)) 
+                            seeds tickerCombinations
+    
+    return combinationWallets
+
+-- Helper for original function: Select 25 random tickers from the list of all tickers
 selectRandomTickers :: RandomGen g => g -> [String] -> ([Int], g)
 selectRandomTickers gen allTickers =
     let tickerCount = length allTickers
@@ -96,7 +157,7 @@ selectRandomTickers gen allTickers =
                then selectKFromN k n gen' acc
                else selectKFromN (k-1) n gen' (r:acc)
 
--- Generate n random wallets using parallelization
+-- Generate n random wallets using parallelization (original function kept for compatibility)
 generateRandomWallets :: Int -> [StockData] -> IO [Wallet]
 generateRandomWallets n stockData = do
     gen <- getStdGen
@@ -196,7 +257,7 @@ calculateWalletReturns stockData wallets = do
                 Just idx -> idx
                 Nothing -> -1
 
--- NEW: Calculate the covariance matrix for stock returns with improved parallelization
+-- Calculate the covariance matrix for stock returns with improved parallelization
 calculateCovarianceMatrix :: [StockData] -> [String] -> IO (V.Vector (V.Vector Double))
 calculateCovarianceMatrix stockData sortedTickers = do
     -- Calculate daily returns for all stocks
