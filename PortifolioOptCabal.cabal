@@ -18,7 +18,6 @@ library
     import:           warnings
     -- Modules exported by the library.
     exposed-modules:  DataLoader,
-                      Simulate,
                       Portfolio,
                       Returns,
                       Optimization,
