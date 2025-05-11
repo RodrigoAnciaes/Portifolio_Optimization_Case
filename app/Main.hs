@@ -77,10 +77,4 @@ main = do
     putStrLn $ "Best Sharpe ratio: " ++ show bestSharpe
     printWalletWithReturnAndVolatility (bestWallet, bestReturn, bestVol) sortedTickers riskFreeRate
     
-    -- Find which tickers are used in the optimal portfolio
-    let bestWalletIndices = [i | i <- [0..V.length bestWallet - 1], bestWallet V.! i > 0]
-    
-    putStrLn "\nThe optimal portfolio uses the following tickers:"
-    putStrLn $ show $ map (\idx -> sortedTickers !! idx) bestWalletIndices
-    
     putStrLn "\nAnalysis complete."
