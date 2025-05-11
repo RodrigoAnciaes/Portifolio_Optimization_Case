@@ -32,9 +32,6 @@ import Portfolio
 import Returns
 import Utilities
 
--- These functions aren't moved yet - we keep them here 
--- to maintain compatibility with existing code
-
 -- Generate a list of random wallets using the original method
 -- Deprecated: Use Portfolio and Returns modules directly
 generateRandomWallets :: Int -> [StockData] -> IO [Wallet]
@@ -53,7 +50,7 @@ generateRandomWallets n stockData = do
         
     -- Generate wallets in parallel using the seeds
     let wallets = withStrategy (parBuffer 100 rdeepseq) $ 
-                  map (\g -> fst $ generateRandomWalletOrig g (sortedTickers, selectedIndices)) seeds
+                  map (\g -> fst $ generateRandomWallet g (selectedIndices, sortedTickers)) seeds
     
     return wallets
 
@@ -100,16 +97,15 @@ generateWalletsByTickerCombination walletsPerCombination stockData = do
 
 -- Helper: Generate wallets for a specific ticker combination
 generateWalletsForCombination :: RandomGen g => Int -> g -> TickerCombination -> [Wallet]
-generateWalletsForCombination count gen (indices, selectedTickers) =
-    let allTickers = selectedTickers  -- Use the selected tickers directly
-        (wallets, _) = generateWallets count gen [] (allTickers, indices)
+generateWalletsForCombination count gen combo@(indices, selectedTickers) =
+    let (wallets, _) = generateWallets count gen []
     in wallets
     where
-        generateWallets :: RandomGen g => Int -> g -> [Wallet] -> ([String], [Int]) -> ([Wallet], g)
-        generateWallets 0 g acc _ = (acc, g)
-        generateWallets n g acc tickerInfo =
-            let (wallet, g') = generateRandomWalletOrig g tickerInfo
-            in generateWallets (n-1) g' (wallet:acc) tickerInfo
+        generateWallets :: RandomGen g => Int -> g -> [Wallet] -> ([Wallet], g)
+        generateWallets 0 g acc = (acc, g)
+        generateWallets n g acc =
+            let (wallet, g') = generateRandomWallet g combo
+            in generateWallets (n-1) g' (wallet:acc)
 
 -- Calculate returns and volatilities for all wallets
 calculateWalletReturnsAndVolatilities :: [StockData] -> [Wallet] -> IO [(Wallet, Double, Double)]

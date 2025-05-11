@@ -2,7 +2,6 @@ module Portfolio
     ( Wallet
     , TickerCombination
     , generateRandomWallet
-    , generateRandomWalletOrig  -- Export the compatibility function
     , calculateWalletVolatility
     , calculateSharpeRatio
     , printWallet
@@ -23,9 +22,9 @@ type Wallet = V.Vector Double
 type TickerCombination = ([Int], [String])
 
 -- Generate a single random wallet with weights for selected indices
--- New implementation with cleaner signature
-generateRandomWallet :: RandomGen g => g -> [Int] -> Int -> (Wallet, g)
-generateRandomWallet gen selectedIndices walletSize =
+-- Using the original function signature for consistency
+generateRandomWallet :: RandomGen g => g -> ([Int], [String]) -> (Wallet, g)
+generateRandomWallet gen (selectedIndices, _) =
     let
         -- Generate initial random weights
         (rawWeights, gen') = genRandoms 25 [] gen
@@ -37,32 +36,7 @@ generateRandomWallet gen selectedIndices walletSize =
         sumWeights = sum cappedWeights
         normalizedWeights = map (/ sumWeights) cappedWeights
         
-        -- Create a vector of walletSize positions with zeros
-        emptyWallet = V.replicate walletSize 0.0
-        
-        -- Fill in the selected positions with normalized weights
-        wallet = foldr (\(idx, weight) acc -> V.update acc (V.singleton (idx, weight)))
-                       emptyWallet
-                       (zip selectedIndices normalizedWeights)
-    in
-        (wallet, gen')
-
--- Compatibility function for old code
--- Takes a tuple of (tickers, indices) as was used in the original code
-generateRandomWalletOrig :: RandomGen g => g -> ([String], [Int]) -> (Wallet, g)
-generateRandomWalletOrig gen (_, selectedIndices) =
-    let
-        -- Generate initial random weights
-        (rawWeights, gen') = genRandoms 25 [] gen
-        
-        -- Apply the 20% cap and redistribute excess
-        cappedWeights = enforceMaxWeight 0.2 rawWeights
-        
-        -- Normalize weights to sum to 1.0
-        sumWeights = sum cappedWeights
-        normalizedWeights = map (/ sumWeights) cappedWeights
-        
-        -- Create a vector of 30 positions with zeros (hardcoded as in original)
+        -- Create a vector of 30 positions with zeros
         emptyWallet = V.replicate 30 0.0
         
         -- Fill in the selected positions with normalized weights

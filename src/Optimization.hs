@@ -3,7 +3,7 @@ module Optimization
     , BestWallet
     ) where
 
-import Portfolio (Wallet, calculateSharpeRatio, generateRandomWallet, calculateWalletVolatility)
+import Portfolio (Wallet, calculateSharpeRatio, calculateWalletVolatility, generateRandomWallet)
 import Returns (calculateWalletReturn)
 import System.Random (StdGen)
 import Control.Monad (foldM, when)
@@ -30,14 +30,11 @@ processAllCombinations bestSoFar@(_, _, _, bestSharpe) gen count (combo:restComb
         printf "\rProgress: %.2f%% - Best Sharpe: %.4f" progress bestSharpe
         hFlush stdout
     
-    -- Process this combination
-    let (indices, _) = combo
-    
     -- Process multiple wallets for this combination
     newBest <- foldM 
         (\currentBest@(_, _, _, currentSharpe) _ -> do
             -- Generate a random wallet
-            let (wallet, newGen) = generateRandomWallet gen indices numTickers
+            let (wallet, newGen) = generateRandomWallet gen combo
                 
                 -- Calculate return
                 ret = calculateWalletReturn dailyReturns tickers wallet
