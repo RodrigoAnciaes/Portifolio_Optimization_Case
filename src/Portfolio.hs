@@ -91,18 +91,22 @@ calculateSharpeRatio :: Double -> Double -> Double -> Double
 calculateSharpeRatio riskFreeRate ret vol = 
     if vol > 0 then (ret - riskFreeRate) / vol else 0
 
--- Pretty print a wallet with just 3 example stocks and annual return
+-- Print the complete wallet allocation
 printWallet :: Wallet -> [String] -> Maybe Double -> IO ()
 printWallet wallet tickers mbReturn = do
-    putStrLn "Wallet allocation (3 examples):"
+    putStrLn "Wallet allocation (complete):"
     
-    -- Get the top 3 holdings by weight
+    -- Get all non-zero holdings sorted by weight (highest to lowest)
     let nonZeroWeights = [(idx, w) | idx <- [0..V.length wallet - 1], let w = wallet V.! idx, w > 0]
-        sortedWeights = take 3 $ sortOn (negate . snd) nonZeroWeights
+        sortedWeights = sortOn (negate . snd) nonZeroWeights
     
-    -- Print the 3 examples
+    -- Print all holdings
     mapM_ (\(idx, weight) ->
-        putStrLn $ "  " ++ tickers !! idx ++ ": " ++ showPercentage weight) sortedWeights
+        -- Make sure idx is within range of tickers array
+        if idx < length tickers 
+        then putStrLn $ "  " ++ tickers !! idx ++ ": " ++ showPercentage weight
+        else putStrLn $ "  Unknown ticker (index " ++ show idx ++ "): " ++ showPercentage weight
+        ) sortedWeights
     
     -- Print total and count of stocks
     let nonZeroCount = length $ filter (> 0) $ V.toList wallet
