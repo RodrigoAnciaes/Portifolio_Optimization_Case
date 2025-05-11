@@ -32,8 +32,8 @@ parseStockData line = do
     let cleanClose = filter (/= '*') closeStr
     close <- readMaybe cleanClose
     
-    -- Get ticker (field 6)
-    let ticker = fields !! 5
+    -- Get ticker (field 6) and clean it
+    let ticker = filter (\c -> c /= '\r' && c /= '\n') (fields !! 5)
     
     return $ StockData date close ticker
 
