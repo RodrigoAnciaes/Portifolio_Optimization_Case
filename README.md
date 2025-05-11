@@ -81,16 +81,34 @@ The default expected filename is `dow_jones_all_tickers_2024.csv`, but you can m
 
 1. From the project directory, run:
    ```bash
-   cabal run PortifolioOptCabal
+   cabal run
    ```
 
-2. For better performance, specify threading options:
+2. The program will automatically use all available CPU cores for parallel computation and display progress information before outputting the optimal portfolio details.
+
+> **Note:** The project's `.cabal` file already includes threading options (`-threaded -rtsopts -with-rtsopts=-N`) in the common warnings section, so you don't need to specify RTS options manually when running the program.
+
+### Customizing Runtime Options
+
+If you need to override or customize the runtime system options:
+
+1. You can specify different RTS options at runtime:
    ```bash
-   cabal run PortifolioOptCabal -- -- +RTS -N -RTS
+   cabal run -- +RTS -N4 -s -RTS
    ```
-   This uses all available CPU cores for parallel computation.
+   This example uses exactly 4 cores (`-N4`) and displays runtime statistics (`-s`).
 
-3. The program will display progress information and finally output the optimal portfolio details.
+2. To modify the default options permanently, edit the `common warnings` section in the `.cabal` file:
+   ```haskell
+   common warnings
+       ghc-options: -Wall -threaded -rtsopts -with-rtsopts=-N
+   ```
+
+3. For memory-intensive computations with large datasets, you may want to increase the heap size:
+   ```bash
+   cabal run -- +RTS -N -M4G -RTS
+   ```
+   This allocates up to 4GB of memory for the program.
 
 ### Configuration Options
 
