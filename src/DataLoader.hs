@@ -59,9 +59,3 @@ mapMaybe _ [] = []
 mapMaybe f (x:xs) = case f x of
     Just y  -> y : mapMaybe f xs
     Nothing -> mapMaybe f xs
-
--- Example usage:
--- main :: IO ()
--- main = do
---     stockData <- loadStockData "data/stocks.csv"
---     mapM_ print stockData

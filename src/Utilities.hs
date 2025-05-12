@@ -3,7 +3,7 @@ module Utilities
     , showPercentage
     ) where
 
--- Helper function to calculate binomial coefficient (n choose k)
+-- Helper function to calculate binomial coefficient (n choose k) (For calculating combinations)
 binomial :: Integer -> Integer -> Integer
 binomial n k
     | k < 0 || k > n = 0
