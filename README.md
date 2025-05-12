@@ -34,8 +34,8 @@ This project includes a DevContainer configuration that provides a ready-to-use 
 
 2. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/portifolio-optimization.git
-   cd portifolio-optimization
+   git clone https://github.com/RodrigoAnciaes/Portifolio_Optimization_Case.git
+   cd Portifolio_Optimization_Case
    ```
 
 3. Open the folder in VS Code and when prompted, click "Reopen in Container" or use the command palette (F1) and select "Remote-Containers: Open Folder in Container".
@@ -52,8 +52,8 @@ This project includes a DevContainer configuration that provides a ready-to-use 
 
 2. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/portifolio-optimization.git
-   cd portifolio-optimization
+   git clone https://github.com/RodrigoAnciaes/Portifolio_Optimization_Case.git
+   cd Portifolio_Optimization_Case
    ```
 
 3. Build the project using Cabal:
