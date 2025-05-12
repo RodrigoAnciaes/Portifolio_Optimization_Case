@@ -3,7 +3,6 @@ module DataLoader
     , loadStockData
     ) where
 
-import System.IO
 import Data.List.Split (splitOn)
 import Data.Time (Day, parseTimeM, defaultTimeLocale)
 import Text.Read (readMaybe)
